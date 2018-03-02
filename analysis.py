@@ -11,7 +11,6 @@ def getParam(measurements,doses,moduleTags,parameter):
 #measurements should be a dictionary with this structure measurements[dose][tag][param]
 #doses a list of doses we wish to get params for, i.e. doses= [0,2,4,8,17,34]
 
-
     result= {}
     result['doses'] = doses
     for tag in moduleTags:
@@ -24,7 +23,7 @@ def getParam(measurements,doses,moduleTags,parameter):
 
 def multiPlot(measurements,doses,moduleTags,parameter,name='multiPlot',title='multiPlot',outputFile='test.pdf'):
 #input is the same as in getParam
-#makes a multigraph param vs dose for requested moduleTags
+#makes a multigraph param vs dose for requested moduleTags and parameter
     r.gROOT.SetBatch(1)
     c1 = r.TCanvas(name,title,200,10,700,500);
     c1.SetGrid();
@@ -57,11 +56,184 @@ def multiPlot(measurements,doses,moduleTags,parameter,name='multiPlot',title='mu
 #parameter  = raw_input('Desired parameter (par0ia,par1ia,par2ia,par0vd,par1vd,par0va,par1va,Vbg): ')
 #outputFile = raw_input('Output file name: ')
 
-doses           = [0,2,4,8,17,34]
+def calculateADC(measurements,dose,chipTag):
+#Returns the ADC value for the corresponding Vbg
+#using the fit-formula and the calibration -> ADC=par0vd+2*par1vd*Vbg
+    par1vd = measurements[dose][chipTag]['par1vd']  
+    par0vd = measurements[dose][chipTag]['par0vd']  
+    Vbg    = measurements[dose][chipTag]['Vbg']
+    adc    = par0vd + 2*par1vd*Vbg
+    return adc
+
+
+def plotADC(measurements,doses,moduleTags,outputFile):
+#Plots ADC value dependence on dose
+    r.gROOT.SetBatch(1)
+    c1 = r.TCanvas('','',200,10,700,500);
+    c1.SetGrid();
+    multiGr = r.TMultiGraph()
+    leg = r.TLegend(0.7,0.7,0.9,0.9);
+
+    for eNum,tag in enumerate(moduleTags):
+        n=len(doses)
+        scatterTemp=r.TGraph(n)
+        scatterTemp.SetMarkerStyle(eNum+2)
+        scatterTemp.SetMarkerSize(1)        
+        scatterTemp.SetMarkerColor(eNum+1)
+        for i in xrange(n):
+            x      = doses[i]
+            y      = calculateADC(measurements,doses[i],tag)
+            scatterTemp.SetPoint(i,x,y)
+        multiGr.Add(scatterTemp)
+        leg.AddEntry(scatterTemp,tag,'P')
+    multiGr.Draw("AP")
+
+    multiGr.SetTitle('ADC values for Vbg');
+    multiGr.GetXaxis().SetTitle("Dose [MRad]");
+    multiGr.GetYaxis().SetTitle('ADC = par0vd + 2*par1vd*Vbg');
+    leg.Draw()
+    c1.SaveAs(outputFile)
+
+def normalizedADC(measurements,doses,moduleTags,outputFile):
+#plotting ADC values divided by the ADC value at 0 MRad
+
+    r.gROOT.SetBatch(1)
+    c1 = r.TCanvas('','',200,10,700,500);
+    c1.SetGrid();
+    multiGr = r.TMultiGraph()
+    leg = r.TLegend(0.7,0.7,0.9,0.9);
+
+    for eNum,tag in enumerate(moduleTags):
+        initialAdc = calculateADC(measurements,0,tag)
+        n=len(doses)
+        scatterTemp=r.TGraph(n)
+        scatterTemp.SetMarkerStyle(eNum+2)
+        scatterTemp.SetMarkerSize(1)        
+        scatterTemp.SetMarkerColor(eNum+1)
+        for i in xrange(n):
+            x      = doses[i]
+            adc    = calculateADC(measurements,doses[i],tag)
+            y      = adc/initialAdc
+            scatterTemp.SetPoint(i,x,y)
+        multiGr.Add(scatterTemp)
+        leg.AddEntry(scatterTemp,tag,'P')
+    multiGr.Draw("AP")
+
+    multiGr.SetTitle('ADC[X MRad]/ADC[0 MRad]');
+    multiGr.GetXaxis().SetTitle("Dose [MRad]");
+    multiGr.GetYaxis().SetTitle('ADC[X]/ADC[0]');
+    leg.Draw()
+    c1.SaveAs(outputFile)
+
+
+def VoltageFromADC(measurements,doses,moduleTags,outputFile):
+#Inversing the fit formula adcValue=(2)*par1vd*Vbg+par0vd
+# -> Voltage=(adcValue-par0vd)/par1vd (*2)
+# adcValue is set as adcValue for dose=0 MRad (as calculated in plotADC)
+
+    r.gROOT.SetBatch(1)
+    c1 = r.TCanvas('','',200,10,700,500);
+    c1.SetGrid();
+    multiGr = r.TMultiGraph()
+    leg = r.TLegend(0.1,0.7,0.25,0.9);
+
+    for eNum,tag in enumerate(moduleTags):
+        adcValue    = calculateADC(measurements,0,tag)
+        n           = len(doses)
+        scatterTemp = r.TGraph(n)
+        scatterTemp.SetMarkerStyle(eNum+2)
+        scatterTemp.SetMarkerSize(1)        
+        scatterTemp.SetMarkerColor(eNum+1)
+        for i in xrange(n):
+            x      = doses[i]
+            par1vd = measurements[doses[i]][tag]['par1vd']  
+            par0vd = measurements[doses[i]][tag]['par0vd']  
+            Vbg    = measurements[doses[i]][tag]['Vbg']
+            y      = (adcValue-par0vd)/(par1vd*2)
+            scatterTemp.SetPoint(i,x,y)
+        multiGr.Add(scatterTemp)
+        leg.AddEntry(scatterTemp,tag,'P')
+    multiGr.Draw("AP")
+
+    multiGr.SetTitle('Voltage calculated using ADC[0 Mrad] in ADC=par0vd+2*par1vd*Vbg');
+    multiGr.GetXaxis().SetTitle("Dose [MRad]");
+    multiGr.GetYaxis().SetTitle('Voltage');
+    leg.Draw()
+    c1.SaveAs(outputFile)
+
+def VbgAdcRatioChange(measurements,doses,moduleTags,outputFile):
+#Ratio of adc/Vbg ADC values from adcValue=2*par1vd*Vbg+par0vd divided
+#by the the same ratio at 0 MRad
+
+    r.gROOT.SetBatch(1)
+    c1 = r.TCanvas('','',200,10,700,500);
+    c1.SetGrid();
+    multiGr = r.TMultiGraph()
+    leg = r.TLegend(0.1,0.7,0.25,0.9)
+
+    for eNum,tag in enumerate(moduleTags):
+        initialVbg   = measurements[0][tag]['Vbg']
+        initialAdc   = calculateADC(measurements,0,tag)
+        initialRatio = initialVbg/initialAdc
+        n=len(doses)
+        scatterTemp = r.TGraph(n)
+        scatterTemp.SetMarkerStyle(eNum+2)
+        scatterTemp.SetMarkerSize(1)        
+        scatterTemp.SetMarkerColor(eNum+1)
+        for i in xrange(n):
+            x      = doses[i]
+            adc    = calculateADC(measurements,doses[i],tag)
+            Vbg   = measurements[doses[i]][tag]['Vbg']
+            y      = (Vbg/adc)/initialRatio
+            scatterTemp.SetPoint(i,x,y)
+        multiGr.Add(scatterTemp)
+        leg.AddEntry(scatterTemp,tag,'P')
+    multiGr.Draw("AP")
+
+    multiGr.SetTitle('Vbg/ADC relative ratio change for different doses');
+    multiGr.GetXaxis().SetTitle("Dose [MRad]");
+    multiGr.GetYaxis().SetTitle('(Vbg/ADC at X MRad)/(Vbg/ADC at 0 MRad)');
+    leg.Draw()
+    c1.SaveAs(outputFile)
+
+def VbgRelativeToADC(measurements,doses,moduleTags,outputFile):
+#Plots Vbg/(ADC[X]/ADC[0]) vs X (X=Dose in MRad)
+    r.gROOT.SetBatch(1)
+    c1 = r.TCanvas('','',200,10,700,500);
+    c1.SetGrid();
+    multiGr = r.TMultiGraph()
+    leg = r.TLegend(0.7,0.2,0.9,0.4);
+
+    for eNum,tag in enumerate(moduleTags):
+        initialAdc = calculateADC(measurements,0,tag)
+        n=len(doses)
+        scatterTemp=r.TGraph(n)
+        scatterTemp.SetMarkerStyle(eNum+2)
+        scatterTemp.SetMarkerSize(1)        
+        scatterTemp.SetMarkerColor(eNum+1)
+        for i in xrange(n):
+            x      = doses[i]
+            adc    = calculateADC(measurements,doses[i],tag)
+            Vbg    = measurements[doses[i]][tag]['Vbg']
+            y      = Vbg/(adc/initialAdc)
+            scatterTemp.SetPoint(i,x,y)
+        multiGr.Add(scatterTemp)
+        leg.AddEntry(scatterTemp,tag,'P')
+    multiGr.Draw("AP")
+
+    multiGr.SetTitle('Vbg/(ADC[X MRad]/ADC[0 MRad])');
+    multiGr.GetXaxis().SetTitle("Dose [MRad]");
+    multiGr.GetYaxis().SetTitle('Vbg/(ADC[X]/ADC[0]) values');
+    leg.Draw()
+    c1.SaveAs(outputFile)
+
+doses           = [0,2,4,8,17,34,50]
 moduleTags      = ['B1','C1','C2','C3']
 
 p17Measurements = {}    #Dictionary with parameter values for every dose, chipTag and each parameter (for p17 measurements)
 m5Measurements  = {}    #structure of the dict is measurements[dose][tag][param], for instance measurements[2]['C1']['Vbg']
+#These dictionaries are used in all of the functions here
+    
 
 #Loads the parameters in the dictionaries
 for dose in doses:
@@ -83,6 +255,12 @@ for dose in doses:
 
 parameters=['par0ia','par1ia','par2ia','par0vd','par1vd','par0va','par1va','Vbg']
 
-for parameter in parameters:
-    multiPlot(p17Measurements,doses,moduleTags,parameter,title=parameter,outputFile='p17'+parameter+'.pdf')
-    multiPlot(p17Measurements,doses,moduleTags,parameter,title=parameter,outputFile='m5'+parameter+'.pdf')
+# for parameter in parameters:
+#    multiPlot(p17Measurements,doses,moduleTags,parameter,title=parameter,outputFile='p17'+parameter+'.pdf')
+#    multiPlot(m5Measurements,doses,moduleTags,parameter,title=parameter,outputFile='m5'+parameter+'.pdf')
+
+plotADC(m5Measurements,doses,moduleTags,'m5AdcValues.pdf')
+VoltageFromADC(m5Measurements,doses,moduleTags,'m5VoltageFromAdc.pdf')
+VbgAdcRatioChange(m5Measurements,doses,moduleTags,'m5AdcVbgRatio.pdf')
+normalizedADC(m5Measurements,doses,moduleTags,'m5NormalizedAdc.pdf')
+VbgRelativeToADC(m5Measurements,doses,moduleTags,'m5VbgRelativeToAdc.pdf')
