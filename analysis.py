@@ -227,37 +227,43 @@ def VbgRelativeToADC(measurements,doses,moduleTags,outputFile):
     leg.Draw()
     c1.SaveAs(outputFile)
 
+def loadParameters(doses,moduleTags):
+#Loads parameter values for the measurements in two dictionary. First one is for measurements at +17C and the second one at -5C
+#Dictionary structure is dict[dose][tag][param], for instance measurements[2]['C1']['Vbg'] returns Vbg for C1 chip at 2MRad irradiation
+    p17Measurements = {}
+    m5Measurements  = {}
+
+    for dose in doses:
+        tempDictp17 = {}
+        tempDictm5  = {}
+        for tag in moduleTags:
+            if tag == 'B1':
+                m5Path  = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROCB'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROCB_m5_1/Dictionary.json'
+                p17Path = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROCB'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROCB_p17_1/Dictionary.json'
+            else:
+                m5Path  = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROC'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROC_m5_1/Dictionary.json'
+                p17Path = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROC'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROC_p17_1/Dictionary.json'
+
+            tempDictp17[tag]= readParams(p17Path)
+            tempDictm5[tag] = readParams(m5Path)
+
+        p17Measurements[dose] = tempDictp17
+        m5Measurements[dose]  = tempDictm5
+
+    return [p17Measurements, m5Measurements]
+
+
+
 doses           = [0,2,4,8,17,34,50]
 moduleTags      = ['B1','C1','C2','C3']
-
-p17Measurements = {}    #Dictionary with parameter values for every dose, chipTag and each parameter (for p17 measurements)
-m5Measurements  = {}    #structure of the dict is measurements[dose][tag][param], for instance measurements[2]['C1']['Vbg']
-#These dictionaries are used in all of the functions here
-    
-
-#Loads the parameters in the dictionaries
-for dose in doses:
-    tempDictp17 = {}
-    tempDictm5  = {}
-    for tag in moduleTags:
-        if tag == 'B1':
-            m5Path  = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROCB'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROCB_m5_1/Dictionary.json'
-            p17Path = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROCB'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROCB_p17_1/Dictionary.json'
-        else:
-            m5Path  = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROC'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROC_m5_1/Dictionary.json'
-            p17Path = '/users/mrogul/Work/Iana/PROC'+tag+'_FulltestROC'+str(dose)+'MRad/QualificationGroup/ModuleFulltestROC_p17_1/Dictionary.json'
-
-        tempDictp17[tag]= readParams(p17Path)
-        tempDictm5[tag] = readParams(m5Path)
-
-    p17Measurements[dose] = tempDictp17
-    m5Measurements[dose]  = tempDictm5
+measurements    = loadParameters(doses,moduleTags)
+p17Measurements = measurements[0]
+m5Measurements  = measurements[1]
 
 parameters=['par0ia','par1ia','par2ia','par0vd','par1vd','par0va','par1va','Vbg']
-
-# for parameter in parameters:
-#    multiPlot(p17Measurements,doses,moduleTags,parameter,title=parameter,outputFile='p17'+parameter+'.pdf')
-#    multiPlot(m5Measurements,doses,moduleTags,parameter,title=parameter,outputFile='m5'+parameter+'.pdf')
+for parameter in parameters:
+    multiPlot(p17Measurements,doses,moduleTags,parameter,title=parameter,outputFile='p17'+parameter+'.pdf')
+    multiPlot(m5Measurements,doses,moduleTags,parameter,title=parameter,outputFile='m5'+parameter+'.pdf')
 
 plotADC(m5Measurements,doses,moduleTags,'m5AdcValues.pdf')
 VoltageFromADC(m5Measurements,doses,moduleTags,'m5VoltageFromAdc.pdf')
